@@ -1,0 +1,190 @@
+---
+title: "Temperature and Gun Violence in New York City"
+date: "2022-08-24"
+output:
+  html_document:
+    theme: readable
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+## Background 
+
+Temperature affects many of our day-to-day decisions. Consider the simple example of choosing an outfit. On a hot day, a person is more likely to wear shorts and less likely to wear a sweater but is complex behavior, like gun violence, also affected by temperature? 
+
+To determine if there is a relationship between temperature and gun violence, data on total shootings in New York City between 2006 - 2021 were analyzed. 
+
+The data were retrieved from from [data.gov](data.gov) on August 24th, 2022. 
+
+```{r importing data, collapse=TRUE}
+# Loading data into R, replacing blank values with NA, nys stands for New York Shooting
+nys <- read.csv('https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD', header = T, na.strings = c("","NA"))
+
+# Printing summary of data
+summary(nys)
+```
+
+## Data Review and Wrangling 
+
+The output of the summary() function was used to identify variables to 
+include/exclude from the analysis, and to ensure the data were in the appropriate 
+format. After reviewing the output, 17 variables were removed from 
+the data set. The variables were removed because they were outside the scope of 
+the analysis (e.g., race of perpetrator, sex of victim) or had limited 
+utility (e.g., longitude, latitude). 
+
+Date data were converted from a string variable to a date object, separated into different columns by day, month, and year, then bound to the original 
+data frame using the bind_rows() function.
+
+```{r data wrangling}
+# Removing excluded categories from data frame
+# nys_rmvd stands for New York Shooting Data with variables removed
+nys_rmvd <- subset(nys, select = -c(INCIDENT_KEY, JURISDICTION_CODE, X_COORD_CD, 
+                                    Y_COORD_CD, Latitude, Longitude, Lon_Lat, 
+                                    PERP_RACE, PERP_SEX, PRECINCT, 
+                                    PERP_AGE_GROUP, LOCATION_DESC, OCCUR_TIME, 
+                                    STATISTICAL_MURDER_FLAG, VIC_AGE_GROUP, 
+                                    VIC_SEX, VIC_RACE))
+
+# Changing format of date
+nys_rmvd$OCCUR_DATE <- as.POSIXct(nys_rmvd$OCCUR_DATE, format = "%m/%d/%Y")
+
+# Creating a new data frame with seperated date data
+df <- nys_rmvd %>%
+  dplyr::mutate(YEAR = lubridate::year(OCCUR_DATE),
+                MONTH = lubridate::month(OCCUR_DATE),
+                DAY = lubridate::day(OCCUR_DATE))
+
+# Binding two data frames
+nys_mod <- bind_rows(df, nys_rmvd)
+
+# Removing old date data
+nys_mod <- subset(nys_mod, select = -c(OCCUR_DATE))
+
+```
+
+The data were then piped into the count() function to determine the total
+shootings per month. Data scored as NA (i.e., not associated with a month) 
+were not included in the analysis and were removed from the data frame. 
+
+Data on the monthly average temperature were not included in the original data 
+set; therefore, they were retrieved from an external source. Monthly averages 
+from 1991 to 2020 were retrieved from Current Results and manually entered into 
+R. The [data](https://www.currentresults.com/Weather/New-York/Places/new-york-city-temperatures-by-month-average.php) can be accessed using the hyper-linked text.
+
+After the data were manually entered into an R vector, they were attached to a 
+data frame containing the total number of shootings organized by month. The new 
+data frame was used to generate scatter plots and build simple linear regression models.
+
+```{r data wrangling 2}
+
+# Data frame with total shootings organized by month
+nys_count <- nys_mod %>% count(MONTH)
+
+# Removing NAs from data frame
+nys_count <- nys_count[1:12,]
+
+# Average high temperature for NYC by month
+average_high <- c(39, 42, 50, 63, 73, 80, 86, 84, 78, 66, 54, 45)
+average_low <- c(27, 29, 35, 46, 56, 64, 71, 69, 63, 53, 41, 35)
+
+# Adding average high temperature to data frame
+nys_count$average_high <- average_high
+nys_count$average_low <- average_low
+```
+
+## Analysis
+
+### Scatter Plots
+
+The nys_count data frame and ggplot2 package were used to create two scatter 
+plots. The purpose of creating the scatter plots was to determine if there was 
+a correlation between temperature and total number of shootings. 
+
+```{r scatter plot high}
+# Scatter plot for average high temperature and total shootings
+ggplot(data = nys_count, mapping = aes(x = average_high, y = n)) +
+  geom_jitter() + 
+  geom_smooth(method = lm, se = F) + 
+  ylab("Total Shootings") + 
+  xlab("Average High Temperature (F)") +
+  ggtitle("Average High Temperature and Shootings")
+```
+
+The data displayed above indicate a positive correlation 
+between average high temperature and total shootings.
+
+```{r scatter plot low}
+# Scatter plot for average low temperature and total shootings
+ggplot(data = nys_count, mapping = aes(x = average_low, y = n)) +
+  geom_jitter() + 
+  geom_smooth(method = lm, se = F) + 
+  ylab("Total Shootings") + 
+  xlab("Average Low Temperature (F)") +
+  ggtitle("Average Low Temperature and Shootings")
+```
+
+Similar to the scatter plot examining average high temperature and total 
+shootings, the scatter plot for average low temperature and total shootings 
+also show a positive correlation. 
+
+### Linear Models
+
+```{r linear model high}
+# Linear model 
+linear_mod <- lm(average_high ~ n, data = nys_count)
+
+# Summary of linear model
+summary(linear_mod)
+```
+
+The summary output indicates that average high temperature accounts for 86.46% 
+of variance in the data.
+
+```{r linear model low}
+# Linear model 
+linear_mod <- lm(average_low ~ n, data = nys_count)
+
+# Summary of linear model
+summary(linear_mod)
+```
+
+The summary output indicates that average low temperature accounts for 90.85% 
+of variance in the data.
+
+## Discussion
+
+Based on the results of the analysis, there appears to be a relationship between temperature and gun violence. Both scatter plots indicate a positive correlation between temperature and 
+total shootings, and both models account for a large amount of the
+variance in the data.
+
+### How the Analysis Can Be Used
+
+The information from the analysis might be useful to law enforcement agencies and other stakeholder groups in New York City. For instance, it can inform when to allocate limited resources (e.g., access to indoor activities with air conditioning).
+
+### Limitations
+
+Although the data from this analysis could be used to address gun violence, 
+there are at least two limitations that affect its utility. First, the analysis used 
+monthly averages that were aggregated across several years, some of which were
+before 2006. Second, the analysis did not identify areas (e.g., public housing) associated with gun violence. Ideally, future iterations of this project will account for the 
+limitations of the analysis.
+
+### Potential Biases 
+
+To minimize bias, variables involving race, age, and sex were not included in 
+the analysis; however, it may have been affected by other sources of bias. 
+Specifically, the researcher's previous experience may have influenced the type of
+models used (i.e., selection of simple linear regression).
+
+## Session Info 
+
+```{r session_info}
+sessionInfo()
+```
+
+
